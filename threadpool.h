@@ -41,11 +41,15 @@ ThreadPool* CreateThreadPool(int min, int max, int queueSize);
 
 // 销毁线程池
 
+
 // 给线程池添加任务
+void threadPoolAdd(ThreadPool* pool, void(func)(void*), void* arg);
 
 // 获取busy线程个数
+int threadPoolBusyNum(ThreadPool* pool);
 
 //获取live线程个数
+int threadPoolAliveNum(ThreadPool* pool);
 
 void* worker(void* arg);
 

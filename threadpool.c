@@ -109,6 +109,7 @@ void* worker(void* arg)
 		pool->queueFront = (pool->queueFront + 1) % (pool->queueCapcity);
 		pool->queueSize--;
 
+		pthread_cond_signal(&pool->notFull); // 消费者唤醒生产者
 		pthread_mutex_unlock(&pool->mutexpool);
 
 		pthread_mutex_lock(&pool->mutexbusy);
@@ -187,4 +188,42 @@ void threadExit(ThreadPool* pool)
 			pool->threadIds[i] = 0;
 	}
 	pthread_exit(NULL);
+}
+
+void threadPoolAdd(ThreadPool* pool, void(func)(void*), void* arg)
+{
+	pthread_mutex_lock(&pool->mutexpool);
+	while (pool->queueSize == pool->queueCapcity && !pool->shutdown)
+	{
+		// 阻塞生产者线程
+		pthread_cond_wait(&pool->notFull, &pool->mutexpool);
+	}
+	if (pool->shutdown)
+		return;
+
+	// 添加任务
+	pool->taskQ[pool->queueRear].function = func;
+	pool->taskQ[pool->queueRear].arg = arg;
+	pool->queueRear = (pool->queueRear + 1) % pool->queueCapcity;
+	pool->queueSize++;
+
+	pthread_cond_signal(&pool->notEmpty); // 生产者唤醒消费者
+
+	pthread_mutex_unlock(&pool->mutexpool);
+}
+
+int threadPoolBusyNum(ThreadPool* pool)
+{
+	pthread_mutex_lock(&pool->mutexbusy);
+	int ret = pool->busyNum;
+	pthread_mutex_unlock(&pool->mutexbusy);
+	return ret;
+}
+
+int threadPoolAliveNum(ThreadPool* pool)
+{
+	pthread_mutex_lock(&pool->mutexpool);
+	int ret = pool->liveNum;
+	pthread_mutex_unlock(&pool->mutexpool);
+	return ret;
 }
