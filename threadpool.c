@@ -1,5 +1,6 @@
 #include "threadpool.h"
-#include <malloc.h>
+#include <stdlib.h>
+
 
 const int addThreadNum = 2;
 
@@ -51,7 +52,7 @@ ThreadPool* CreateThreadPool(int min, int max, int queueSize)
 		pthread_create(&pool->managerId, NULL, manager, pool); // 管理者线程
 		for (int i = 0; i < min; i++)
 		{
-			pthread_create(&pool->threadIds, NULL, worker, NULL); // 工作线程
+			pthread_create(&pool->threadIds, NULL, worker, pool); // 工作线程
 		}
 		return pool;
 	} while (0);
@@ -65,6 +66,40 @@ ThreadPool* CreateThreadPool(int min, int max, int queueSize)
 		free(pool);
 
 	return NULL;
+}
+
+int threadPoolDestroy(ThreadPool* pool)
+{
+	if (pool == NULL)
+		return -1;
+
+	// 关闭线程池
+	pool->shutdown = 1;
+
+	// 阻塞回收管理者线程
+	pthread_join(pool->managerId, NULL);
+
+	// 唤醒阻塞的消费者线程
+	for (int i = 0; i < pool->liveNum; i++)
+	{
+		pthread_cond_signal(&pool->notEmpty);
+	}
+
+	// 释放堆内存
+	if (pool->taskQ)
+		free(pool->taskQ);
+	if (pool->threadIds)
+		free(pool->threadIds);
+
+	pthread_mutex_destroy(&pool->mutexpool);
+	pthread_mutex_destroy(&pool->mutexbusy);
+	pthread_cond_destroy(&pool->notEmpty);
+	pthread_cond_destroy(&pool->notFull);
+
+	free(pool);
+	pool = NULL;
+
+	return 0;
 }
 
 void* worker(void* arg)
@@ -89,7 +124,8 @@ void* worker(void* arg)
 				pool->exitNum--;
 				pool->liveNum--;
 				pthread_mutex_unlock(&pool->mutexpool);
-				threadExit(pool);
+				//threadExit(pool);
+				return;
 			}
 		}
 
@@ -97,7 +133,8 @@ void* worker(void* arg)
 		if (pool->shutdown)
 		{
 			pthread_mutex_unlock(&pool->mutexpool);
-			threadExit(pool);
+			//threadExit(pool);
+			return;
 		}
 
 		// 从任务队列中取出一个任务
@@ -112,6 +149,7 @@ void* worker(void* arg)
 		pthread_cond_signal(&pool->notFull); // 消费者唤醒生产者
 		pthread_mutex_unlock(&pool->mutexpool);
 
+		printf("pthread %ld start working...\n", pthread_self());
 		pthread_mutex_lock(&pool->mutexbusy);
 		pool->busyNum++;
 		pthread_mutex_unlock(&pool->mutexbusy);
@@ -120,6 +158,7 @@ void* worker(void* arg)
 		free(task.arg);
 		task.arg = NULL;
 
+		printf("pthread %ld end working...\n", pthread_self());
 		pthread_mutex_lock(&pool->mutexbusy);
 		pool->busyNum--;
 		pthread_mutex_unlock(&pool->mutexbusy);

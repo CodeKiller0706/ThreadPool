@@ -1,6 +1,8 @@
 #pragma once
 
 #include <pthread.h>
+#include <string.h>
+#include <unistd.h>
 
 // 任务结构体
 typedef struct Task {
@@ -40,7 +42,7 @@ typedef struct ThreadPool
 ThreadPool* CreateThreadPool(int min, int max, int queueSize);
 
 // 销毁线程池
-
+int threadPoolDestroy(ThreadPool* pool);
 
 // 给线程池添加任务
 void threadPoolAdd(ThreadPool* pool, void(func)(void*), void* arg);
